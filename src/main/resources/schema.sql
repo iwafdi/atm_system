@@ -58,5 +58,5 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount           NUMERIC(15,2) NOT NULL,
     balance_after    NUMERIC(15,2) NOT NULL,
     related_account  VARCHAR,
-    atm_id           VARCHAR REFERENCES atms(atm_id)
+    atm_id           VARCHAR
 );
