@@ -229,12 +229,8 @@ public class ATMSystem {
         }
     }
 
-    /**
-     * Display Technician Menu
-     */
     private static void showTechnicianMenu() {
         boolean sessionActive = true;
-
         while (sessionActive) {
             System.out.println("\n========== TECHNICIAN MENU ==========");
             System.out.println("1. Run Diagnostics");
@@ -247,7 +243,6 @@ public class ATMSystem {
             System.out.print("Select action: ");
 
             String choice = scanner.nextLine();
-
             switch (choice) {
                 case "1":
                     currentATM.runSelfDiagnostics();
@@ -258,13 +253,14 @@ public class ATMSystem {
                     break;
                 case "3":
                     currentATM.replenishInkAndPaper();
+                    atmDAO.update(currentATM);
                     recordLog("REPLENISH", "Replenished Ink and Paper levels.");
                     break;
                 case "4":
                     handleSystemUpgrade();
                     break;
                 case "5":
-                    currentATM.printMaintenanceLogs();
+                    printMaintenanceLogs();
                     break;
                 case "6":
                     sessionActive = false;
@@ -277,11 +273,26 @@ public class ATMSystem {
         }
     }
 
+    /** Prints maintenance logs read back from the database. */
+    private static void printMaintenanceLogs() {
+        List<MaintenanceLog> logs = logDAO.findByAtmId(ATM_ID);
+        if (logs.isEmpty()) {
+            System.out.println("No maintenance logs found.");
+            return;
+        }
+        System.out.println("\n--- MAINTENANCE LOGS ---");
+        for (MaintenanceLog log : logs) {
+            System.out.println(log.toString());
+        }
+        System.out.println("------------------------");
+    }
+
     private static void handleCashReplenishment() {
         System.out.print("Enter amount £ to replenish: ");
         try {
             double amount = Double.parseDouble(scanner.nextLine());
             currentATM.replenishCash(amount);
+            atmDAO.update(currentATM);
             recordLog("CASH_REPLENISH", "Added £" + amount + " to ATM Inventory.");
         } catch (NumberFormatException e) {
             System.out.println("❌ Invalid amount format.");
@@ -293,15 +304,14 @@ public class ATMSystem {
         System.out.print("Select: ");
         String typeChoice = scanner.nextLine();
         String typeName = typeChoice.equals("1") ? "Firmware" : typeChoice.equals("2") ? "Software" : null;
-
         if (typeName == null) {
             System.out.println("❌ Invalid selection");
             return;
         }
-
         System.out.print("Enter new version string (e.g., v2.1.0): ");
         String version = scanner.nextLine();
         currentATM.applyUpgrade(typeName, version);
+        atmDAO.update(currentATM);
         recordLog("SYSTEM_UPGRADE", "Upgraded " + typeName + " to " + version);
     }
 
