@@ -4,9 +4,12 @@ import models.Transaction;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Persists banking transactions. Extended with query methods in a later task.
@@ -39,5 +42,31 @@ public class TransactionDAO {
         } catch (SQLException e) {
             throw new RuntimeException("Failed to insert transaction: " + e.getMessage(), e);
         }
+    }
+
+    public List<Transaction> findByAccount(String accountNumber) {
+        String sql = "SELECT transaction_id, timestamp, type, account_number, amount, "
+                + "balance_after, related_account, atm_id FROM transactions "
+                + "WHERE account_number = ? ORDER BY transaction_id";
+        List<Transaction> result = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, accountNumber);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new Transaction(
+                            rs.getInt("transaction_id"),
+                            rs.getTimestamp("timestamp").toLocalDateTime(),
+                            rs.getString("type"),
+                            rs.getString("account_number"),
+                            rs.getDouble("amount"),
+                            rs.getDouble("balance_after"),
+                            rs.getString("related_account"),
+                            rs.getString("atm_id")));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to list transactions: " + e.getMessage(), e);
+        }
+        return result;
     }
 }
