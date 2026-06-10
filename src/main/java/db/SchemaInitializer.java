@@ -48,7 +48,7 @@ public class SchemaInitializer {
         accountDAO.insert(new Account("ACC002", "Current", 2500.00, "CUST001"));
 
         new CardDAO(conn).insert(
-                new Card("1234567890123456", "12/25", "Debit", "BANK001", "1234"), "CUST001");
+                new Card("1234567890123456", "12/28", "Debit", "BANK001", "1234"), "CUST001");
 
         new TechnicianDAO(conn).insert(
                 new Technician("TECH001", "Alice Tech", "Level 3", "9999"));
