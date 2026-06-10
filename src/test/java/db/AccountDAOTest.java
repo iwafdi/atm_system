@@ -62,4 +62,29 @@ class AccountDAOTest {
         assertEquals(4000.0, accountDAO.findByNumber("ACC001").getBalance());
         assertEquals(3500.0, accountDAO.findByNumber("ACC002").getBalance());
     }
+
+    @Test
+    void transferRejectsAmountExceedingBalance() {
+        accountDAO.insert(new Account("ACC001", "Savings", 5000.0, "CUST001"));
+        accountDAO.insert(new Account("ACC002", "Current", 2500.0, "CUST001"));
+        assertThrows(RuntimeException.class,
+                () -> accountDAO.transfer("ACC001", "ACC002", 999999.0, "ATM-001A"));
+        assertEquals(5000.0, accountDAO.findByNumber("ACC001").getBalance());
+        assertEquals(2500.0, accountDAO.findByNumber("ACC002").getBalance());
+    }
+
+    @Test
+    void transferRejectsNonPositiveAmount() {
+        accountDAO.insert(new Account("ACC001", "Savings", 5000.0, "CUST001"));
+        accountDAO.insert(new Account("ACC002", "Current", 2500.0, "CUST001"));
+        assertThrows(RuntimeException.class,
+                () -> accountDAO.transfer("ACC001", "ACC002", -50.0, "ATM-001A"));
+        assertEquals(5000.0, accountDAO.findByNumber("ACC001").getBalance());
+        assertEquals(2500.0, accountDAO.findByNumber("ACC002").getBalance());
+    }
+
+    @Test
+    void updateBalanceOnMissingAccountThrows() {
+        assertThrows(RuntimeException.class, () -> accountDAO.updateBalance("NOPE", 100.0));
+    }
 }

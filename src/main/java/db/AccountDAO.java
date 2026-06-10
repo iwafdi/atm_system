@@ -71,7 +71,10 @@ public class AccountDAO {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setDouble(1, newBalance);
             ps.setString(2, accountNumber);
-            ps.executeUpdate();
+            int rows = ps.executeUpdate();
+            if (rows == 0) {
+                throw new RuntimeException("No account updated for account_number=" + accountNumber);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to update balance: " + e.getMessage(), e);
         }
@@ -84,7 +87,14 @@ public class AccountDAO {
     public void transfer(String fromAccount, String toAccount, double amount, String atmId) {
         try {
             conn.setAutoCommit(false);
-            double fromBalance = findByNumber(fromAccount).getBalance() - amount;
+            double fromCurrent = findByNumber(fromAccount).getBalance();
+            if (amount <= 0) {
+                throw new RuntimeException("Transfer amount must be positive");
+            }
+            if (fromCurrent < amount) {
+                throw new RuntimeException("Insufficient funds for transfer");
+            }
+            double fromBalance = fromCurrent - amount;
             double toBalance = findByNumber(toAccount).getBalance() + amount;
             updateBalance(fromAccount, fromBalance);
             updateBalance(toAccount, toBalance);
