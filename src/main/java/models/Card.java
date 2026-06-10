@@ -68,7 +68,12 @@ public class Card {
     public String getBankID() {
         return bankID;
     }
-    
+
+    /** Plaintext PIN, used only when seeding a card into the database. */
+    public String getPinForSeeding() {
+        return pin;
+    }
+
     @Override
     public String toString() {
         return "Card{" +
