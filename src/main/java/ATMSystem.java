@@ -1,25 +1,31 @@
 import models.*;
-import java.util.ArrayList;
+import db.*;
+import java.sql.Connection;
 import java.util.List;
 import java.util.Scanner;
 
 /**
- * Main ATM System Application
- * Demonstrates UML class diagram implementation with Technician Extension
+ * Main ATM System Application (PostgreSQL-backed).
  */
 public class ATMSystem {
     private static Scanner scanner = new Scanner(System.in);
 
-    // Global States
+    // Global session state
     private static ATM currentATM = null;
     private static Customer currentCustomer = null;
     private static Card currentCard = null;
     private static Technician currentTechnician = null;
 
-    // Data Storage
-    private static List<Technician> technicians = new ArrayList<>();
-    private static List<Customer> customers = new ArrayList<>();
+    // DAOs (initialized after the DB connection opens)
+    private static AccountDAO accountDAO;
+    private static CustomerDAO customerDAO;
+    private static CardDAO cardDAO;
+    private static TechnicianDAO technicianDAO;
+    private static AtmDAO atmDAO;
+    private static MaintenanceLogDAO logDAO;
+    private static TransactionDAO transactionDAO;
 
+    private static final String ATM_ID = "ATM-001A";
     private static final int MAX_PIN_ATTEMPTS = 3;
 
     public static void main(String[] args) {
@@ -27,10 +33,10 @@ public class ATMSystem {
         System.out.println("   WELCOME TO PING-SOURCE ATM SYSTEM");
         System.out.println("===========================================\n");
 
-        // Initialize sample data
-        initializeSampleData();
+        if (!startup()) {
+            return;
+        }
 
-        // Start ATM operation
         boolean running = true;
         while (running) {
             running = authenticateUser();
@@ -43,40 +49,41 @@ public class ATMSystem {
             }
         }
 
+        Database.close();
         System.out.println("\nThank you for using Ping-Source ATM!");
         scanner.close();
     }
 
     /**
-     * Initialize sample customer, account data, and ATM states
+     * Connects to PostgreSQL, ensures the schema exists, seeds sample data on
+     * first run, builds the DAOs, and loads the ATM. Returns false on failure.
      */
-    private static void initializeSampleData() {
-        // Initialize ATM
-        currentATM = new ATM("ATM-001A", "Main Branch", 10000.00);
+    private static boolean startup() {
+        try {
+            Connection conn = Database.connect();
+            SchemaInitializer.runSchema(conn);
+            SchemaInitializer.seedIfEmpty(conn);
 
-        // Create sample customer
-        currentCustomer = new Customer("CUST001", "John Smith", "123 Main St", "07700900000");
+            accountDAO = new AccountDAO(conn);
+            customerDAO = new CustomerDAO(conn);
+            cardDAO = new CardDAO(conn);
+            technicianDAO = new TechnicianDAO(conn);
+            atmDAO = new AtmDAO(conn);
+            logDAO = new MaintenanceLogDAO(conn);
+            transactionDAO = new TransactionDAO(conn);
 
-        // Create sample accounts
-        Account savingsAccount = new Account("ACC001", "Savings", 5000.00, "CUST001");
-        Account currentAccount = new Account("ACC002", "Current", 2500.00, "CUST001");
-
-        currentCustomer.addAccount(savingsAccount);
-        currentCustomer.addAccount(currentAccount);
-
-        // Create sample card
-        Card card = new Card("1234567890123456", "12/25", "Debit", "BANK001", "1234");
-        currentCustomer.addCard(card);
-
-        // Create sample technician
-        technicians.add(new Technician("TECH001", "Alice Tech", "Level 3", "9999"));
-
-        customers.add(currentCustomer);
-
-        System.out.println("Sample data initialized:");
-        System.out.println("Customer Card: 1234567890123456 (PIN: 1234)");
-        System.out.println("Accounts: Savings (£5000.00), Current (£2500.00)");
-        System.out.println("Technician ID: TECH001 (PIN: 9999)\n");
+            currentATM = atmDAO.findById(ATM_ID);
+            if (currentATM == null) {
+                System.out.println("❌ ATM " + ATM_ID + " not found in database.");
+                return false;
+            }
+            System.out.println("Connected to database. ATM " + ATM_ID + " ready.\n");
+            return true;
+        } catch (RuntimeException e) {
+            System.out.println("❌ Could not start ATM: " + e.getMessage());
+            System.out.println("   Check that PostgreSQL is running and db.properties is correct.");
+            return false;
+        }
     }
 
     /**
@@ -95,33 +102,24 @@ public class ATMSystem {
             return false;
         }
 
-        // Check if input is a Technician ID or PIN
-        for (Technician tech : technicians) {
-            if (tech.getTechnicianID().equalsIgnoreCase(authInput) || tech.authenticate(authInput)) {
-                return authenticateTechnician(tech, authInput);
-            }
+        Technician tech = technicianDAO.findById(authInput);
+        if (tech != null) {
+            return authenticateTechnician(tech);
         }
 
-        // Otherwise, assume it's a Customer Card
         return authenticateCustomer(authInput);
     }
 
     /**
      * Handle Technician Authentication
      */
-    private static boolean authenticateTechnician(Technician tech, String initialInput) {
-        // If they already entered the PIN instead of the ID in the first prompt,
-        // auto-authenticate
-        if (tech.authenticate(initialInput)) {
-            return finalizeTechnicianLogin(tech);
-        }
-
+    private static boolean authenticateTechnician(Technician tech) {
         int attempts = 0;
         while (attempts < MAX_PIN_ATTEMPTS) {
             System.out.print("Enter Technician PIN: ");
             String pin = scanner.nextLine();
 
-            if (tech.authenticate(pin)) {
+            if (technicianDAO.verifyPin(tech.getTechnicianID(), pin)) {
                 return finalizeTechnicianLogin(tech);
             }
             attempts++;
@@ -136,14 +134,7 @@ public class ATMSystem {
     private static boolean finalizeTechnicianLogin(Technician tech) {
         System.out.println("✓ Technician Authentication successful!\n");
         currentTechnician = tech;
-
-        // Log the login event
-        currentATM.addMaintenanceLog(new MaintenanceLog(
-                "LOG-" + System.currentTimeMillis(),
-                "TECHNICIAN_LOGIN",
-                "Technician logged in successfully.",
-                tech.getTechnicianID(),
-                currentATM.getAtmID()));
+        recordLog("TECHNICIAN_LOGIN", "Technician logged in successfully.");
         return true;
     }
 
@@ -151,53 +142,50 @@ public class ATMSystem {
      * Authenticate Customer with card input
      */
     private static boolean authenticateCustomer(String cardInput) {
-        // Find card in known customers
-        for (Customer cust : customers) {
-            for (Card card : cust.getCards()) {
-                if (card.getCardNumber().equals(cardInput)) {
-                    currentCard = card;
-                    currentCustomer = cust;
-                    break;
-                }
-            }
-            if (currentCard != null)
-                break;
-        }
-
-        if (currentCard == null) {
+        Card card = cardDAO.findByCardNumber(cardInput);
+        if (card == null) {
             System.out.println("❌ Invalid card number. Card returned.");
             return true;
         }
-
-        if (!currentCard.validate()) {
+        if (!card.validate()) {
             System.out.println("❌ Invalid card format. Card returned.");
             return true;
         }
-
-        if (currentCard.isExpired()) {
+        if (card.isExpired()) {
             System.out.println("❌ Card has expired. Please contact your bank.");
             return true;
         }
 
-        // PIN validation with retry limit
         int attempts = 0;
         while (attempts < MAX_PIN_ATTEMPTS) {
             System.out.print("Enter PIN: ");
             String pin = scanner.nextLine();
 
-            if (currentCard.validatePIN(pin)) {
+            if (cardDAO.verifyPin(cardInput, pin)) {
+                currentCard = card;
+                currentCustomer = loadCustomer(cardDAO.findCustomerIdByCardNumber(cardInput));
                 System.out.println("✓ Authentication successful!\n");
-                return true; // customer is preserved in global state as it is pre-loaded
+                return true;
             }
-
             attempts++;
             if (attempts < MAX_PIN_ATTEMPTS) {
                 System.out.println("❌ Incorrect PIN. " + (MAX_PIN_ATTEMPTS - attempts) + " attempts remaining.");
             }
         }
-
         System.out.println("❌ Maximum PIN attempts exceeded. Card blocked.");
         return true;
+    }
+
+    /** Loads a customer with its accounts and cards attached. */
+    private static Customer loadCustomer(String customerId) {
+        Customer customer = customerDAO.findById(customerId);
+        for (Account account : accountDAO.findByCustomerId(customerId)) {
+            customer.addAccount(account);
+        }
+        for (Card card : cardDAO.findByCustomerId(customerId)) {
+            customer.addCard(card);
+        }
+        return customer;
     }
 
     /**
@@ -263,14 +251,14 @@ public class ATMSystem {
             switch (choice) {
                 case "1":
                     currentATM.runSelfDiagnostics();
-                    logTechnicianAction("DIAGNOSTICS", "Ran ATM self-diagnostics.");
+                    recordLog("DIAGNOSTICS", "Ran ATM self-diagnostics.");
                     break;
                 case "2":
                     handleCashReplenishment();
                     break;
                 case "3":
                     currentATM.replenishInkAndPaper();
-                    logTechnicianAction("REPLENISH", "Replenished Ink and Paper levels.");
+                    recordLog("REPLENISH", "Replenished Ink and Paper levels.");
                     break;
                 case "4":
                     handleSystemUpgrade();
@@ -280,7 +268,7 @@ public class ATMSystem {
                     break;
                 case "6":
                     sessionActive = false;
-                    logTechnicianAction("LOGOUT", "Technician logged out.");
+                    recordLog("LOGOUT", "Technician logged out.");
                     System.out.println("\n✓ Technician Session ended.");
                     break;
                 default:
@@ -294,7 +282,7 @@ public class ATMSystem {
         try {
             double amount = Double.parseDouble(scanner.nextLine());
             currentATM.replenishCash(amount);
-            logTechnicianAction("CASH_REPLENISH", "Added £" + amount + " to ATM Inventory.");
+            recordLog("CASH_REPLENISH", "Added £" + amount + " to ATM Inventory.");
         } catch (NumberFormatException e) {
             System.out.println("❌ Invalid amount format.");
         }
@@ -314,19 +302,16 @@ public class ATMSystem {
         System.out.print("Enter new version string (e.g., v2.1.0): ");
         String version = scanner.nextLine();
         currentATM.applyUpgrade(typeName, version);
-        logTechnicianAction("SYSTEM_UPGRADE", "Upgraded " + typeName + " to " + version);
+        recordLog("SYSTEM_UPGRADE", "Upgraded " + typeName + " to " + version);
     }
 
-    /**
-     * Helper to log actions
-     */
-    private static void logTechnicianAction(String type, String description) {
-        currentATM.addMaintenanceLog(new MaintenanceLog(
-                "LOG-" + System.currentTimeMillis(),
-                type,
-                description,
-                currentTechnician.getTechnicianID(),
-                currentATM.getAtmID()));
+    /** Records a maintenance log both in the ATM object and the database. */
+    private static void recordLog(String type, String description) {
+        String technicianId = currentTechnician != null ? currentTechnician.getTechnicianID() : "SYSTEM";
+        MaintenanceLog log = new MaintenanceLog(
+                "LOG-" + System.currentTimeMillis(), type, description, technicianId, ATM_ID);
+        currentATM.addMaintenanceLog(log);
+        logDAO.insert(log);
     }
 
     /**
