@@ -328,60 +328,56 @@ public class ATMSystem {
         }
     }
 
-    /**
-     * Withdraw cash from account
-     */
     private static void withdrawCash() {
         System.out.println("\n--- WITHDRAW CASH ---");
         Account account = selectAccount();
-
-        if (account != null) {
-            System.out.print("Enter amount to withdraw: £");
-            try {
-                double amount = Double.parseDouble(scanner.nextLine());
-
-                // First check if ATM has enough physical cash
-                if (currentATM.getCashInventory() >= amount) {
-                    // Then logic with customer account
-                    if (account.withdraw(amount)) {
-                        // Finally physically dispense
-                        if (currentATM.dispenseCash(amount)) {
-                            System.out.println("\n✓ Please collect your cash");
-                            printReceipt("Withdrawal", account, amount, account.getBalance());
-                        } else {
-                            // rollback since ATM is out of sync or failed
-                            account.deposit(amount);
-                            System.out.println("❌ ATM Hardware failure during dispense. Rolled back.");
-                        }
-                    }
-                } else {
-                    System.out.println("❌ ATM has insufficient funds to fulfill this withdrawal.");
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("❌ Invalid amount entered");
+        if (account == null) {
+            return;
+        }
+        System.out.print("Enter amount to withdraw: £");
+        try {
+            double amount = Double.parseDouble(scanner.nextLine());
+            if (currentATM.getCashInventory() < amount) {
+                System.out.println("❌ ATM has insufficient funds to fulfill this withdrawal.");
+                return;
             }
+            if (account.withdraw(amount)) {
+                if (currentATM.dispenseCash(amount)) {
+                    accountDAO.updateBalance(account.getAccountNumber(), account.getBalance());
+                    atmDAO.update(currentATM);
+                    transactionDAO.insert("WITHDRAWAL", account.getAccountNumber(), amount,
+                            account.getBalance(), null, ATM_ID);
+                    System.out.println("\n✓ Please collect your cash");
+                    printReceipt("Withdrawal", account, amount, account.getBalance());
+                } else {
+                    account.deposit(amount); // rollback in-memory
+                    System.out.println("❌ ATM Hardware failure during dispense. Rolled back.");
+                }
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("❌ Invalid amount entered");
         }
     }
 
-    /**
-     * Deposit funds into account
-     */
     private static void depositFunds() {
         System.out.println("\n--- DEPOSIT FUNDS ---");
         Account account = selectAccount();
-
-        if (account != null) {
-            System.out.print("Enter amount to deposit: £");
-            try {
-                double amount = Double.parseDouble(scanner.nextLine());
-
-                if (account.deposit(amount)) {
-                    currentATM.acceptCash(amount);
-                    printReceipt("Deposit", account, amount, account.getBalance());
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("❌ Invalid amount entered");
+        if (account == null) {
+            return;
+        }
+        System.out.print("Enter amount to deposit: £");
+        try {
+            double amount = Double.parseDouble(scanner.nextLine());
+            if (account.deposit(amount)) {
+                currentATM.acceptCash(amount);
+                accountDAO.updateBalance(account.getAccountNumber(), account.getBalance());
+                atmDAO.update(currentATM);
+                transactionDAO.insert("DEPOSIT", account.getAccountNumber(), amount,
+                        account.getBalance(), null, ATM_ID);
+                printReceipt("Deposit", account, amount, account.getBalance());
             }
+        } catch (NumberFormatException e) {
+            System.out.println("❌ Invalid amount entered");
         }
     }
 
