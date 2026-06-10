@@ -48,6 +48,11 @@ public class Technician {
         this.clearanceLevel = clearanceLevel;
     }
 
+    /** Plaintext PIN, used only when seeding a technician into the database. */
+    public String getPinForSeeding() {
+        return pin;
+    }
+
     @Override
     public String toString() {
         return "Technician{" +
