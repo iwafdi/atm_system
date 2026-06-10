@@ -381,32 +381,44 @@ public class ATMSystem {
         }
     }
 
-    /**
-     * Transfer funds between accounts
-     */
     private static void transferFunds() {
         System.out.println("\n--- TRANSFER FUNDS ---");
         System.out.println("Select source account:");
         Account sourceAccount = selectAccount();
-
-        if (sourceAccount != null) {
-            System.out.println("\nSelect destination account:");
-            Account destinationAccount = selectAccount();
-
-            if (destinationAccount != null && !sourceAccount.equals(destinationAccount)) {
-                System.out.print("Enter amount to transfer: £");
-                try {
-                    double amount = Double.parseDouble(scanner.nextLine());
-
-                    if (sourceAccount.transfer(destinationAccount, amount)) {
-                        printReceipt("Transfer", sourceAccount, amount, sourceAccount.getBalance());
-                    }
-                } catch (NumberFormatException e) {
-                    System.out.println("❌ Invalid amount entered");
-                }
-            } else if (sourceAccount.equals(destinationAccount)) {
-                System.out.println("❌ Cannot transfer to the same account");
+        if (sourceAccount == null) {
+            return;
+        }
+        System.out.println("\nSelect destination account:");
+        Account destinationAccount = selectAccount();
+        if (destinationAccount == null) {
+            return;
+        }
+        if (sourceAccount.getAccountNumber().equals(destinationAccount.getAccountNumber())) {
+            System.out.println("❌ Cannot transfer to the same account");
+            return;
+        }
+        System.out.print("Enter amount to transfer: £");
+        try {
+            double amount = Double.parseDouble(scanner.nextLine());
+            if (amount <= 0) {
+                System.out.println("❌ Invalid transfer amount");
+                return;
             }
+            if (amount > sourceAccount.getBalance()) {
+                System.out.println("❌ Insufficient funds for transfer");
+                return;
+            }
+            accountDAO.transfer(sourceAccount.getAccountNumber(),
+                    destinationAccount.getAccountNumber(), amount, ATM_ID);
+            // Refresh in-memory balances from the persisted truth
+            double newSourceBalance = accountDAO.findByNumber(sourceAccount.getAccountNumber()).getBalance();
+            sourceAccount.updateBalance(newSourceBalance - sourceAccount.getBalance());
+            System.out.println("✓ Transfer successful");
+            printReceipt("Transfer", sourceAccount, amount, newSourceBalance);
+        } catch (NumberFormatException e) {
+            System.out.println("❌ Invalid amount entered");
+        } catch (RuntimeException e) {
+            System.out.println("❌ " + e.getMessage());
         }
     }
 
