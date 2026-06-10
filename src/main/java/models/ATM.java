@@ -34,6 +34,21 @@ public class ATM {
         this.logs = new ArrayList<>();
     }
 
+    /** Full-state constructor used when loading an ATM from the database. */
+    public ATM(String atmID, String location, double cashInventory, int inkLevel,
+               int paperLevel, String firmwareVersion, String softwareVersion,
+               String hardwareStatus) {
+        this.atmID = atmID;
+        this.location = location;
+        this.cashInventory = cashInventory;
+        this.inkLevel = inkLevel;
+        this.paperLevel = paperLevel;
+        this.firmwareVersion = firmwareVersion;
+        this.softwareVersion = softwareVersion;
+        this.hardwareStatus = hardwareStatus;
+        this.logs = new java.util.ArrayList<>();
+    }
+
     /**
      * Dispenses cash from ATM Inventory
      */
